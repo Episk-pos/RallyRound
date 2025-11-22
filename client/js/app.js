@@ -1,3 +1,6 @@
+// Import crypto utilities
+import * as crypto from './crypto.js';
+
 // Initialize GunDB
 const gun = Gun({
     peers: ['http://localhost:8765/gun'],
@@ -7,6 +10,7 @@ const gun = Gun({
 
 // Global state
 let currentUser = null;
+let userPrivateKey = null; // CryptoKey object (NEVER sent to server)
 let topics = gun.get('topics');
 
 // DOM Elements
@@ -50,6 +54,23 @@ async function checkAuth() {
 
         if (response.ok) {
             currentUser = await response.json();
+
+            // Check if user has registered a key
+            if (!currentUser.keyRegistered) {
+                console.log('User authenticated but key not registered - generating keys...');
+                await generateAndRegisterKeys();
+            } else {
+                // Try to load private key from sessionStorage
+                const storedKey = crypto.getStoredPrivateKey();
+                if (storedKey) {
+                    console.log('Loading stored private key');
+                    userPrivateKey = await crypto.importPrivateKeyFromPEM(storedKey);
+                } else {
+                    console.warn('Private key not found in session - user may need to re-register');
+                    // Could prompt user to re-register or generate new keys
+                }
+            }
+
             showDashboard();
         } else {
             showWelcome();
@@ -64,6 +85,72 @@ async function checkAuth() {
     if (urlParams.get('auth') === 'success') {
         window.history.replaceState({}, document.title, '/');
         await checkAuth();
+    }
+}
+
+// Generate keys on the client and register with server
+async function generateAndRegisterKeys() {
+    try {
+        console.log('Generating RSA key pair on client...');
+
+        // Generate key pair CLIENT-SIDE
+        const keyPair = await crypto.generateKeyPair();
+        userPrivateKey = keyPair.privateKey;
+
+        console.log('Key pair generated. Exporting public key...');
+
+        // Export public key to PEM format to send to server
+        const publicKeyPEM = await crypto.exportPublicKeyToPEM(keyPair.publicKey);
+
+        // Create a challenge to prove we own this key pair
+        const challenge = JSON.stringify({
+            email: currentUser.email,
+            timestamp: Date.now(),
+            action: 'register-public-key'
+        });
+
+        console.log('Signing challenge with private key...');
+
+        // Sign the challenge with our private key
+        const signature = await crypto.signData(challenge, keyPair.privateKey);
+
+        console.log('Registering public key with server...');
+
+        // Send public key and signature to server
+        const response = await fetch('/auth/register-key', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                publicKey: publicKeyPEM,
+                signature: signature,
+                challenge: challenge
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to register public key');
+        }
+
+        const result = await response.json();
+        console.log('Public key registered successfully:', result);
+
+        // Store private key in sessionStorage (cleared when browser closes)
+        const privateKeyPEM = await crypto.exportPrivateKeyToPEM(keyPair.privateKey);
+        crypto.storePrivateKey(privateKeyPEM);
+
+        // Update current user state
+        currentUser.keyRegistered = true;
+        currentUser.keyId = result.keyId;
+
+        console.log('Key registration complete!');
+
+    } catch (error) {
+        console.error('Error generating and registering keys:', error);
+        alert('Failed to register encryption keys. Please try logging in again.');
     }
 }
 
@@ -102,6 +189,11 @@ function setupEventListeners() {
                 credentials: 'include'
             });
             currentUser = null;
+            userPrivateKey = null;
+
+            // Clear stored private key
+            crypto.clearPrivateKey();
+
             showWelcome();
         } catch (error) {
             console.error('Logout failed:', error);

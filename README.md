@@ -44,25 +44,34 @@ Built with a peer-to-peer architecture using GunDB for decentralized data storag
 
 - Express server acting as GunDB seed peer
 - Google OAuth authentication
-- Certificate signing service for identity verification
-- Key management with rolling window implementation
+- Public key verification endpoint (verifies client signatures)
+- Certificate signing service linking verified Google accounts to public keys
+- Rolling window key management (max 100 keys per user)
 - Google Calendar API integration
 
 ### Frontend (Vanilla JS + GunDB)
 
 - Client-side GunDB peer for P2P communication
+- **Client-side cryptography** using Web Crypto API
+  - RSA key pair generation (2048-bit)
+  - Private keys never transmitted or exposed
+  - Challenge signing for proof of ownership
 - Real-time topic updates and interest tracking
 - Modal-based UI for topic creation and scheduling
-- Responsive design
+- Responsive design with sessionStorage for key persistence
 
 ### Security Model
 
-1. **Authentication**: Google OAuth for user identity
-2. **Key Management**: Server generates and signs RSA key pairs for each user session
-3. **Certificates**: Server-signed certificates link Google accounts to public keys
-4. **Distributed Directory**: Public keys and certificates stored in GunDB
-5. **Verification**: All peers can verify signatures using the distributed public key directory
-6. **Key Rotation**: Automatic cleanup maintains max 100 keys per user
+1. **Authentication**: Google OAuth for user identity verification
+2. **Client-Side Key Generation**: RSA 2048-bit key pairs generated entirely on the client using Web Crypto API
+   - **Private keys NEVER leave the client** - not transmitted, not stored on server
+   - Private keys stored in browser sessionStorage (cleared when browser closes)
+3. **Proof of Ownership**: Client signs a challenge with private key before registration
+4. **Server Verification**: Server verifies the signature using the submitted public key
+5. **Certificates**: Server-signed certificates link verified Google accounts to public keys
+6. **Distributed Directory**: Public keys and certificates stored in GunDB for peer verification
+7. **Verification**: All peers can verify signatures using the distributed public key directory
+8. **Key Rotation**: Automatic cleanup maintains max 100 keys per user
 
 ## Prerequisites
 
@@ -144,6 +153,41 @@ Open your browser and navigate to:
 http://localhost:8765
 ```
 
+## Authentication Flow
+
+RallyRound uses a secure two-step authentication process:
+
+### Step 1: Google OAuth Authentication
+1. User clicks "Sign in with Google"
+2. User authorizes the application via Google OAuth
+3. Server verifies with Google and creates a session
+4. User is redirected back to the app
+
+### Step 2: Client-Side Key Generation & Registration
+1. Client generates an RSA-2048 key pair **locally** using Web Crypto API
+2. Client creates a challenge containing:
+   - User's email (from session)
+   - Timestamp (ensures freshness)
+   - Action description
+3. Client signs the challenge with the **private key** (proof of ownership)
+4. Client sends to server:
+   - Public key (PEM format)
+   - Signature (base64)
+   - Original challenge (JSON)
+5. Server verifies:
+   - Challenge contains correct user email
+   - Challenge is recent (< 5 minutes old)
+   - Signature is valid using the provided public key
+6. Server creates a certificate linking the Google account to the public key
+7. Server publishes the certificate to GunDB
+8. Private key is stored in browser sessionStorage (never transmitted)
+
+**Key Security Points:**
+- Private keys are generated on the client and **never** leave the device
+- Server only sees public keys
+- Signature verification proves the client owns the private key
+- Certificates provide a trusted link between Google identity and cryptographic key
+
 ## Usage Guide
 
 ### Creating a Topic
@@ -184,16 +228,17 @@ RallyRound/
 ├── server/
 │   ├── index.js                 # Main server file
 │   ├── routes/
-│   │   └── auth.js              # OAuth and calendar routes
+│   │   └── auth.js              # OAuth, key registration, and calendar routes
 │   └── services/
-│       ├── keyManagement.js     # Key generation and management
+│       ├── keyManagement.js     # Signature verification utilities
 │       └── certificateService.js # Certificate signing
 ├── client/
 │   ├── index.html               # Main HTML file
 │   ├── styles/
 │   │   └── main.css             # Styling
 │   └── js/
-│       └── app.js               # Client-side application
+│       ├── app.js               # Client-side application
+│       └── crypto.js            # CLIENT-SIDE key generation & crypto (Web Crypto API)
 ├── .env.example                 # Environment variables template
 ├── .gitignore                   # Git ignore rules
 ├── package.json                 # Dependencies and scripts
@@ -205,8 +250,9 @@ RallyRound/
 ### Authentication
 
 - `GET /auth/google` - Initiate Google OAuth flow
-- `GET /auth/google/callback` - OAuth callback handler
+- `GET /auth/google/callback` - OAuth callback handler (establishes session, NO keys)
 - `GET /auth/user` - Get current user info
+- `POST /auth/register-key` - Register client-generated public key (with signature proof)
 - `POST /auth/logout` - Logout current user
 
 ### Calendar
@@ -251,20 +297,42 @@ RallyRound/
 
 ### Current Implementation
 
+- **Client-Side Key Generation**: RSA keys generated using Web Crypto API (browser native)
+- **Zero-Knowledge Server**: Server never has access to private keys
+- **Challenge-Response Authentication**: Proves ownership of private key without transmitting it
 - Session-based authentication with Google OAuth
-- Private keys stored only in server-side sessions
+- Private keys stored in browser sessionStorage (cleared on browser close)
 - Server-signed certificates for public key verification
-- Rolling key window prevents database bloat
+- Rolling key window prevents database bloat (max 100 keys per user)
+
+### Security Strengths
+
+✅ Private keys never transmitted over network
+✅ Private keys never stored on server
+✅ Uses Web Crypto API (browser native, hardware-accelerated when available)
+✅ Challenge must be recent (< 5 minutes) to prevent replay attacks
+✅ Server verifies signature before issuing certificate
+✅ Distributed public key directory for peer verification
+
+### Known Limitations
+
+⚠️ **SessionStorage Vulnerability**: Private keys in sessionStorage are vulnerable to XSS attacks
+⚠️ **Single Device**: Keys don't sync across devices (by design, but may inconvenience users)
+⚠️ **No Key Recovery**: If session is cleared, user must generate new keys
+⚠️ **Browser Storage**: Keys cleared when browser closes (could use localStorage with encryption)
 
 ### Production Recommendations
 
-1. **Use HTTPS**: Enable SSL/TLS in production
-2. **Secure Session Storage**: Use Redis or similar for session storage
-3. **Persistent Server Keys**: Store server master key pair in secure key management service
-4. **Rate Limiting**: Add rate limiting to prevent abuse
-5. **Input Validation**: Implement comprehensive input validation
-6. **Content Security Policy**: Add CSP headers
+1. **Use HTTPS**: Enable SSL/TLS in production (critical for OAuth and session security)
+2. **Secure Session Storage**: Use Redis with encryption for session storage
+3. **Persistent Server Keys**: Store server master key pair in secure key management service (AWS KMS, HashiCorp Vault)
+4. **Rate Limiting**: Add rate limiting to prevent abuse of key registration
+5. **Input Validation**: Implement comprehensive input validation and sanitization
+6. **Content Security Policy**: Add CSP headers to mitigate XSS attacks
 7. **Key Expiration**: Implement certificate expiration and renewal
+8. **Consider Hardware Tokens**: For high-security scenarios, integrate WebAuthn/FIDO2
+9. **Audit Logging**: Log all key registrations and certificate issuances
+10. **Key Backup Option**: Offer encrypted key export for user backup (with strong passphrase)
 
 ## Future Enhancements
 
