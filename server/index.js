@@ -3,10 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const Gun = require('gun');
+require('gun/sea'); // Load SEA module for user authentication
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
-const keyManagement = require('./services/keyManagement');
 
 const app = express();
 const PORT = process.env.PORT || 8765;
@@ -60,12 +60,9 @@ const gun = Gun({
 // Make gun instance available globally for routes
 app.set('gun', gun);
 
-// Initialize the certificates and keys database structure
-const publicKeys = gun.get('public-keys');
-const certificates = gun.get('certificates');
-
-app.set('publicKeys', publicKeys);
-app.set('certificates', certificates);
+// Initialize the public topics discovery graph
+const publicTopics = gun.get('public-topics');
+app.set('publicTopics', publicTopics);
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
