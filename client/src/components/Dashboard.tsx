@@ -3,6 +3,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useTopics } from '../hooks/useTopics';
 import { TopicCard } from './TopicCard';
 import { CreateTopicModal } from './CreateTopicModal';
+import { SchedulingPanel } from './SchedulingPanel';
+import type { Topic } from '../types';
 
 export function Dashboard() {
   const { googleUser } = useAuth();
@@ -13,22 +15,42 @@ export function Dashboard() {
     interests,
     isLoading,
     createTopic,
+    updateTopic,
     toggleInterest,
     scheduleTopic,
   } = useTopics();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+  const [schedulingTopic, setSchedulingTopic] = useState<Topic | null>(null);
 
-  const handleSchedule = async (topicId: string) => {
-    // For now, schedule 1 week from now at 2 PM
-    const scheduledTime = new Date();
-    scheduledTime.setDate(scheduledTime.getDate() + 7);
-    scheduledTime.setHours(14, 0, 0, 0);
+  const handleOpenCreate = () => {
+    setEditingTopic(null);
+    setIsModalOpen(true);
+  };
 
+  const handleOpenEdit = (topic: Topic) => {
+    setEditingTopic(topic);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingTopic(null);
+  };
+
+  const handleOpenScheduling = (topic: Topic) => {
+    setSchedulingTopic(topic);
+  };
+
+  const handleCloseScheduling = () => {
+    setSchedulingTopic(null);
+  };
+
+  const handleScheduleConfirm = async (topicId: string, scheduledTime: number) => {
     try {
-      // TODO: Integrate with Google Calendar API
-      await scheduleTopic(topicId, scheduledTime.getTime());
-      alert('Session scheduled successfully!');
+      await scheduleTopic(topicId, scheduledTime);
+      setSchedulingTopic(null);
     } catch (error) {
       console.error('Failed to schedule:', error);
       alert('Failed to schedule session');
@@ -43,7 +65,7 @@ export function Dashboard() {
     <section className="section">
       <div className="dashboard-header">
         <h2>Community Topics</h2>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
+        <button className="btn btn-primary" onClick={handleOpenCreate}>
           Create New Topic
         </button>
       </div>
@@ -68,6 +90,7 @@ export function Dashboard() {
                     googleUser?.email || ''
                   )
                 }
+                onEdit={() => handleOpenEdit(topic)}
               />
             ))
           )}
@@ -96,7 +119,8 @@ export function Dashboard() {
                     googleUser?.email || ''
                   )
                 }
-                onSchedule={() => handleSchedule(topic.id)}
+                onSchedule={() => handleOpenScheduling(topic)}
+                onEdit={() => handleOpenEdit(topic)}
               />
             ))
           )}
@@ -124,9 +148,20 @@ export function Dashboard() {
 
       <CreateTopicModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleCloseModal}
         onSubmit={createTopic}
+        editingTopic={editingTopic}
+        onUpdate={updateTopic}
       />
+
+      {schedulingTopic && (
+        <SchedulingPanel
+          topic={schedulingTopic}
+          isOpen={true}
+          onClose={handleCloseScheduling}
+          onScheduleConfirm={(scheduledTime) => handleScheduleConfirm(schedulingTopic.id, scheduledTime)}
+        />
+      )}
     </section>
   );
 }

@@ -1,4 +1,5 @@
 import { useAuth } from '../hooks/useAuth';
+import { NotificationBell } from './NotificationBell';
 
 export function Header() {
   const { googleUser, isAuthenticated, isLoading, login, logout } = useAuth();
@@ -12,6 +13,7 @@ export function Header() {
             <span>Loading...</span>
           ) : isAuthenticated && googleUser ? (
             <div className="user-info">
+              <NotificationBell />
               {googleUser.picture && (
                 <img src={googleUser.picture} alt="Avatar" className="avatar" />
               )}

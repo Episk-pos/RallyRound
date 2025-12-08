@@ -69,8 +69,16 @@ router.get('/google/callback', async (req, res) => {
       authenticated: true
     };
 
-    // Redirect to the app - client will authenticate with SEA
-    res.redirect('/?auth=success');
+    // Save session before redirect (important for cross-port scenarios)
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.status(500).send('Session error');
+      }
+      // Redirect to the app - client will authenticate with SEA
+      const appUrl = process.env.APP_URL || 'http://localhost:3000';
+      res.redirect(`${appUrl}/?auth=success`);
+    });
   } catch (error) {
     console.error('Error during OAuth callback:', error);
     res.status(500).send('Authentication failed');
@@ -117,6 +125,38 @@ router.post('/logout', (req, res) => {
       return res.status(500).json({ error: 'Logout failed' });
     }
     res.json({ message: 'Logged out successfully' });
+  });
+});
+
+// Test login - ONLY available in TEST_MODE for E2E testing
+// This bypasses OAuth and creates a session directly
+router.post('/test-login', (req, res) => {
+  if (process.env.TEST_MODE !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const { userId, email, name } = req.body;
+
+  if (!userId || !email || !name) {
+    return res.status(400).json({ error: 'userId, email, and name are required' });
+  }
+
+  // Create session without OAuth
+  req.session.user = {
+    id: userId,
+    email: email,
+    name: name,
+    picture: '',
+    tokens: null, // No Google tokens in test mode
+    authenticated: true
+  };
+
+  req.session.save((err) => {
+    if (err) {
+      console.error('Test login session error:', err);
+      return res.status(500).json({ error: 'Session error' });
+    }
+    res.json({ success: true, user: { id: userId, email, name } });
   });
 });
 

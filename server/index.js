@@ -7,9 +7,15 @@ require('gun/sea'); // Load SEA module for user authentication
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
+const schedulingRoutes = require('./routes/scheduling');
+const notificationRoutes = require('./routes/notifications');
+const testHelperRoutes = require('./routes/test-helpers');
 
 const app = express();
 const PORT = process.env.PORT || 8765;
+
+// Trust proxy for proper cookie handling in development
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
@@ -27,6 +33,8 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
@@ -36,6 +44,9 @@ app.use(express.static(path.join(__dirname, '../client')));
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/scheduling', schedulingRoutes);
+app.use('/notifications', notificationRoutes);
+app.use('/test', testHelperRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

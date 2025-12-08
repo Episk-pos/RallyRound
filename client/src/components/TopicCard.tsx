@@ -6,12 +6,22 @@ interface TopicCardProps {
   interests: Map<string, Interest>;
   onToggleInterest: () => void;
   onSchedule?: () => void;
+  onEdit?: () => void;
+  schedulingProgress?: {
+    participantsVoted: number;
+    totalParticipants: number;
+    topSlotPercentage: number;
+    threshold: number;
+  };
 }
 
-export function TopicCard({ topic, interests, onToggleInterest, onSchedule }: TopicCardProps) {
+export function TopicCard({ topic, interests, onToggleInterest, onSchedule, onEdit, schedulingProgress }: TopicCardProps) {
   const { seaPub, isAuthenticated } = useAuth();
 
-  const interestCount = interests.size;
+  // Exclude creator's interest from count (creator shouldn't count toward threshold)
+  const interestCount = Array.from(interests.keys()).filter(
+    (pub) => pub !== topic.presenterPub
+  ).length;
   const progress = topic.minParticipants
     ? (interestCount / topic.minParticipants) * 100
     : 0;
@@ -47,6 +57,26 @@ export function TopicCard({ topic, interests, onToggleInterest, onSchedule }: To
         />
       </div>
 
+      {topic.stage === 2 && schedulingProgress && (
+        <div className="scheduling-progress">
+          <div className="scheduling-stats">
+            <span>{schedulingProgress.participantsVoted} / {schedulingProgress.totalParticipants} voted</span>
+            <span className={schedulingProgress.topSlotPercentage >= schedulingProgress.threshold ? 'consensus-near' : ''}>
+              {schedulingProgress.topSlotPercentage}% consensus
+            </span>
+          </div>
+          <div className="progress-bar scheduling-bar">
+            <div
+              className="progress-fill"
+              style={{
+                width: `${Math.min((schedulingProgress.topSlotPercentage / schedulingProgress.threshold) * 100, 100)}%`,
+                backgroundColor: schedulingProgress.topSlotPercentage >= schedulingProgress.threshold ? '#28a745' : undefined,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {topic.stage === 3 && topic.scheduledTime && (
         <div className="scheduled-info">
           <span>📅 {new Date(topic.scheduledTime).toLocaleDateString()}</span>
@@ -66,12 +96,19 @@ export function TopicCard({ topic, interests, onToggleInterest, onSchedule }: To
           </button>
         )}
 
-        {topic.stage === 2 && isOwner && onSchedule && (
-          <button className="btn btn-success" onClick={onSchedule}>
-            Schedule Session
+        {topic.stage === 2 && isAuthenticated && onSchedule && (
+          <button className={`btn ${isOwner ? 'btn-success' : 'btn-primary'}`} onClick={onSchedule}>
+            {isOwner ? 'Manage Scheduling' : 'Vote on Times'}
           </button>
         )}
-      </div>
+
+        {isOwner && onEdit && topic.stage !== 3 && (
+          <button className="btn btn-secondary" onClick={onEdit}>
+            Edit
+          </button>
+        )}
+
+              </div>
     </div>
   );
 }
