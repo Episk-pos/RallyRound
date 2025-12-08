@@ -40,52 +40,66 @@ Built with a peer-to-peer architecture using GunDB SEA for decentralized data st
 
 ## Architecture
 
-### Backend (Node.js + Express + GunDB)
+RallyRound uses a hybrid architecture that combines traditional web authentication with decentralized data storage:
 
+```mermaid
+flowchart TB
+    subgraph Client["Browser (React SPA)"]
+        UI["User Interface"]
+        SEA["SEA Crypto Module"]
+    end
+
+    subgraph Server["Express Server"]
+        Auth["Authentication"]
+        Seed["Seed Generator"]
+        Calendar["Calendar Proxy"]
+        Relay["GunDB Relay"]
+    end
+
+    subgraph Google["Google Services"]
+        OAuth["OAuth 2.0"]
+        CalAPI["Calendar API"]
+    end
+
+    subgraph P2P["GunDB P2P Network"]
+        Topics["Topic Data"]
+        Sync["Real-time Sync"]
+    end
+
+    UI -->|Login| Auth
+    Auth -->|Verify identity| OAuth
+    Auth -->|Get seed| Seed
+    SEA -->|Derive keypair| Seed
+    UI -->|Check availability| Calendar
+    Calendar --> CalAPI
+    SEA <-->|Read/write topics| P2P
+    Relay <-->|Peer connection| P2P
 ```
-┌─────────────┐     ┌─────────────────────────┐     ┌─────────────┐
-│   Browser   │────▶│   Express Server        │────▶│   Google    │
-│             │     │                         │     │   OAuth     │
-│  1. OAuth   │     │  1. Verify Google auth  │     └─────────────┘
-│  2. Get seed│◀────│  2. Generate SEA seed   │
-│  3. Derive  │     │  3. Calendar API proxy  │
-│     SEA keys│     │  4. GunDB relay peer    │
-│  4. gun.user│     └───────────┬─────────────┘
-│     .auth() │                 │
-└──────┬──────┘                 │
-       │                        │
-       ▼                        ▼
-┌─────────────────────────────────────────────┐
-│              GunDB P2P Network              │
-│                                             │
-│  - Topics stored in user space (~pubkey)    │
-│  - All writes cryptographically signed      │
-│  - Peers verify signatures automatically    │
-│  - Public discovery graph for topic listing │
-└─────────────────────────────────────────────┘
-```
 
-- Express server acting as GunDB seed peer
-- Google OAuth authentication
-- SEA seed generation endpoint (HMAC-based deterministic seed)
-- Google Calendar API integration
+**How it works:**
 
-### Frontend (React + Vite + GunDB SEA)
+1. **Identity**: Users sign in with Google. The server generates a deterministic seed from their Google ID, which the browser uses to derive cryptographic keys. The same user always gets the same keys.
 
-- React SPA with TypeScript
-- GunDB client with SEA for authenticated writes
-- Deterministic keypair generation from server-provided seed
-- Real-time topic updates and interest tracking
-- Responsive design
+2. **Data Storage**: Topics are stored in GunDB, a decentralized peer-to-peer database. Each user's data is cryptographically signed, so only they can modify it, but anyone can read it.
+
+3. **Scheduling**: Once enough people express interest in a topic, the app checks participants' Google Calendar availability and creates calendar events.
+
+### Key Components
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Frontend | React + TypeScript + Vite | Single-page application with real-time updates |
+| Backend | Node.js + Express | OAuth handling, seed generation, calendar proxy |
+| Database | GunDB with SEA | Decentralized storage with cryptographic authentication |
+| Identity | Google OAuth + GunDB SEA | Google verifies who you are; SEA keys let you write data |
 
 ### Security Model
 
-1. **Google OAuth**: Verifies user identity
-2. **Server-Generated Seed**: HMAC(secret, googleUserId) creates deterministic seed
-3. **Client-Side Key Derivation**: SEA keypair derived from seed (same user = same keys)
-4. **Authenticated Writes**: All GunDB writes signed with SEA keypair
-5. **Peer Verification**: Other peers automatically verify signatures
-6. **Public Discovery**: Topics discoverable via public graph, full data in protected user space
+- **Google OAuth** verifies user identity
+- **Deterministic keys** ensure the same user always gets the same cryptographic identity
+- **Client-side key derivation** means private keys never leave your browser
+- **Signed writes** let peers verify that data came from its claimed author
+- **Public discovery** allows browsing topics while protecting authorship
 
 ## Prerequisites
 
@@ -174,58 +188,61 @@ http://localhost:3000
 
 ## Authentication Flow
 
-RallyRound uses GunDB SEA with Google OAuth as the identity provider:
+RallyRound bridges Google identity to decentralized storage using a two-phase authentication:
 
-### Step 1: Google OAuth Authentication
-1. User clicks "Sign in with Google"
-2. User authorizes the application via Google OAuth
-3. Server verifies with Google and creates a session
-4. User is redirected back to the app
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant Server
+    participant Google
+    participant GunDB
 
-### Step 2: SEA Key Derivation
-1. Client requests SEA seed from server (`/auth/sea-seed`)
-2. Server generates deterministic seed: `HMAC(SEA_SECRET, googleUserId)`
-3. Client derives SEA keypair from seed using `@gooddollar/gun-pk-auth`
-4. Client authenticates to GunDB: `gun.user().auth(seaPair)`
-5. User's public key (`user.is.pub`) becomes their GunDB identity
+    Note over User,Google: Phase 1: Verify identity with Google
+    User->>Browser: Click "Sign in with Google"
+    Browser->>Server: Redirect to OAuth
+    Server->>Google: Request authorization
+    Google->>User: Show consent screen
+    User->>Google: Grant permission
+    Google->>Server: Return auth code
+    Server->>Google: Exchange for tokens
+    Google-->>Server: User info + tokens
+    Server-->>Browser: Session established
 
-**Key Security Points:**
-- Same Google user always gets the same SEA keypair (deterministic)
-- Private keys derived client-side, never transmitted
-- All writes to user space are cryptographically signed
-- Other peers automatically verify signatures
+    Note over Browser,GunDB: Phase 2: Establish decentralized identity
+    Browser->>Server: Request crypto seed
+    Server-->>Browser: Deterministic seed (from Google ID)
+    Browser->>Browser: Generate keypair from seed
+    Browser->>GunDB: Authenticate with keypair
+    GunDB-->>Browser: Ready to read/write
+```
+
+**Why two phases?**
+
+- **Phase 1** proves you are who you say you are (Google's job)
+- **Phase 2** gives you a cryptographic identity for the decentralized network
+
+The seed is deterministic: the same Google account always produces the same keypair. This means you can log in from any device and access your data, while your private key never leaves your browser.
 
 ## Project Structure
 
 ```
 RallyRound/
 ├── server/
-│   ├── index.js                 # Express + GunDB server
+│   ├── index.js              # Express server + GunDB relay peer
 │   └── routes/
-│       └── auth.js              # OAuth, SEA seed, calendar routes
-├── client/
+│       └── auth.js           # OAuth, seed generation, calendar API
+│
+├── client/                   # React SPA (Vite + TypeScript)
 │   ├── src/
-│   │   ├── components/          # React components
-│   │   │   ├── Header.tsx
-│   │   │   ├── Welcome.tsx
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── TopicCard.tsx
-│   │   │   └── CreateTopicModal.tsx
-│   │   ├── hooks/               # React hooks
-│   │   │   ├── useAuth.ts       # Authentication state
-│   │   │   └── useTopics.ts     # Topic CRUD with GunDB
-│   │   ├── lib/                 # Utilities
-│   │   │   ├── gun.ts           # GunDB initialization
-│   │   │   └── sea-auth.ts      # SEA authentication
-│   │   ├── types/               # TypeScript types
-│   │   │   └── index.ts
-│   │   ├── App.tsx              # Main app component
-│   │   └── main.tsx             # Entry point
-│   ├── vite.config.ts           # Vite config with proxy
-│   └── package.json
-├── .env.example                 # Environment variables template
-├── package.json                 # Root package.json
-└── README.md
+│   │   ├── components/       # UI: Header, Dashboard, TopicCard, etc.
+│   │   ├── hooks/            # useAuth (login state), useTopics (CRUD)
+│   │   ├── lib/              # gun.ts (DB client), sea-auth.ts (crypto)
+│   │   └── types/            # TypeScript interfaces
+│   └── vite.config.ts        # Dev server with API proxy
+│
+├── .env.example              # Environment template
+└── package.json              # Scripts: dev, build, start
 ```
 
 ## API Endpoints
