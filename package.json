@@ -1,6 +1,7 @@
 {
   "name": "rallyround",
   "version": "1.0.0",
+  "packageManager": "pnpm@10.18.3",
   "description": "A decentralized community organizing tool for topic-based presentations and scheduling",
   "main": "server/index.js",
   "scripts": {
@@ -8,8 +9,15 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "nodemon server/index.js",
     "dev:client": "npm run dev --prefix client",
+    "dev:test": "TEST_MODE=true PORT=9765 concurrently \"npm run dev:server\" \"VITE_API_URL=http://localhost:9765 npm run dev:test --prefix client\"",
     "build": "npm run build --prefix client",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "playwright test --project=chromium",
+    "test:ci": "playwright test --project=chromium",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed --project=chromium",
+    "test:real-auth": "playwright test --project=chromium-real-auth",
+    "test:setup-auth": "playwright test --headed --project=setup-auth",
+    "test:report": "playwright show-report"
   },
   "keywords": [
     "gundb",
@@ -21,15 +29,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "gun": "^0.2020.1240",
-    "express": "^4.18.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
     "googleapis": "^128.0.0",
-    "express-session": "^1.17.3"
+    "gun": "^0.2020.1240"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "concurrently": "^8.2.2"
+    "@playwright/test": "^1.57.0",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.1"
   }
 }
