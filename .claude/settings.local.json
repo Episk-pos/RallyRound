@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(pnpm exec playwright install:*)",
+      "Bash(pnpm test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

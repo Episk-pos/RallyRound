@@ -2,11 +2,17 @@
 :root {
   --primary-color: #4a90d9;
   --primary-hover: #357abd;
+  --primary-bg: #e7f1ff;
   --secondary-color: #6c757d;
   --success-color: #28a745;
+  --success-bg: #e8f5e9;
+  --success-text: #2e7d32;
   --warning-color: #ffc107;
+  --warning-bg: #fff3cd;
+  --warning-text: #856404;
   --danger-color: #dc3545;
   --light-bg: #f8f9fa;
+  --bg-secondary: #f5f5f5;
   --border-color: #dee2e6;
   --text-color: #333;
   --text-muted: #6c757d;
@@ -283,6 +289,30 @@ body {
   padding: 0.75rem;
   background: var(--light-bg);
   border-radius: 8px;
+}
+
+/* Scheduling Progress */
+.scheduling-progress {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--light-bg);
+  border-radius: 8px;
+}
+
+.scheduling-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.scheduling-stats .consensus-near {
+  color: var(--success-color);
+  font-weight: 600;
+}
+
+.scheduling-bar {
+  margin-bottom: 0;
 }
 
 /* Modal */
