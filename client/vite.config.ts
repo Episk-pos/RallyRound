@@ -8,6 +8,7 @@ const backendUrl = process.env.VITE_API_URL || 'http://localhost:8765'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '0.0.0.0',
     port: 3000,
     proxy: {
       '/auth': {
