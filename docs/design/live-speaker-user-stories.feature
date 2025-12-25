@@ -1,91 +1,184 @@
 # Live Speaker System - User Stories
 # Gherkin format for comprehensive feature specification
+#
+# Architecture Note:
+# - RallyRound: Web dashboard, session state, GunDB, REST API
+# - DiscordStats: Discord bot, OAuth, sound effects, VC presence
+# - Stories are tagged with @RallyRound or @DiscordStats to indicate ownership
 
 # =============================================================================
-# AUTHENTICATION
+# AUTHENTICATION (DiscordStats provides OAuth, RallyRound validates)
 # =============================================================================
 
-Feature: Discord OAuth Authentication
+@DiscordStats
+Feature: Discord OAuth Provider
+  As the DiscordStats system
+  I want to provide Discord OAuth authentication
+  So that users can authenticate across both systems
+
+  Background:
+    Given the DiscordStats OAuth application is configured
+    And the Discord bot has required permissions
+
+  Scenario: OAuth initiation
+    Given a user clicks "Login with Discord" on RallyRound
+    When they are redirected to DiscordStats /auth/discord
+    Then DiscordStats should redirect to Discord's authorization page
+    And include the correct scopes (identify, guilds)
+
+  Scenario: OAuth callback
+    Given a user authorizes the Discord application
+    When Discord redirects to /auth/discord/callback
+    Then DiscordStats should exchange the code for tokens
+    And create a session token (JWT)
+    And redirect to RallyRound with the token
+
+  Scenario: Token validation endpoint
+    Given RallyRound receives a request with a token
+    When RallyRound calls DiscordStats /auth/validate
+    Then DiscordStats should verify the token signature
+    And return the Discord user info if valid
+    And return an error if invalid or expired
+
+@RallyRound
+Feature: Dashboard Authentication
   As a session participant
-  I want to log in with my Discord account
+  I want to log in with my Discord account via the dashboard
   So that I can participate in sessions with my Discord identity
 
   Background:
     Given the RallyRound web dashboard is accessible
-    And the Discord OAuth application is configured
+    And DiscordStats OAuth is configured
 
   Scenario: First-time login with Discord
     Given I am not authenticated
     When I click "Login with Discord"
-    Then I should be redirected to Discord's authorization page
-    And I should see the permissions being requested
-    When I authorize the application
-    Then I should be redirected back to the dashboard
+    Then I should be redirected to DiscordStats OAuth
+    When I complete Discord authorization
+    Then I should be redirected back to RallyRound with a token
+    And RallyRound should validate the token with DiscordStats
     And I should see my Discord username and avatar
-    And I should have a persistent cryptographic identity
+    And I should have a persistent SEA cryptographic identity
 
-  Scenario: Returning user login
-    Given I have previously authenticated with Discord
-    When I visit the dashboard
-    Then I should be automatically logged in
-    And I should see my Discord username and avatar
+  Scenario: Token validation on page load
+    Given I have a token stored in localStorage
+    When I load the dashboard
+    Then RallyRound should validate the token with DiscordStats
+    And if valid, I should be authenticated
+    And if invalid, I should see the login screen
 
   Scenario: Logout
     Given I am authenticated
     When I click "Logout"
-    Then I should be logged out of the dashboard
+    Then my local token should be cleared
     And I should see the login screen
 
 # =============================================================================
 # SESSION MANAGEMENT
 # =============================================================================
 
-Feature: Session Creation and Lifecycle
-  As a facilitator
-  I want to create and manage live sessions
-  So that I can run structured discussions
+@DiscordStats
+Feature: Session Creation via Discord Bot
+  As a facilitator using Discord
+  I want to create sessions via chat commands
+  So that I can start sessions without leaving Discord
 
   Background:
-    Given I am authenticated as a Discord user
-    And I have the facilitator role in my Discord server
+    Given I am authenticated in Discord
+    And the RallyRound bot is in my server
+    And I am in a voice channel
 
-  Scenario: Create a new session
-    Given I am in a Discord voice channel
-    When I use the command "!session start Weekly Standup"
-    Then a new session should be created with title "Weekly Standup"
-    And the session should be in "unstructured" mode by default
-    And I should be designated as the facilitator
-    And a link to the web dashboard should be posted in chat
+  Scenario: Create session via Discord command
+    When I type "!rr start Weekly Standup" in the text channel
+    Then the bot should call RallyRound POST /api/sessions
+    And include my Discord ID, guild ID, voice channel ID
+    When RallyRound returns success
+    Then the bot should post the dashboard URL in chat
+    And the bot should register its webhook URL with the session
 
-  Scenario: Start a session from web dashboard
-    Given I am on the web dashboard
-    And I have selected a Discord voice channel
-    When I click "Start Session"
-    And I enter the session title "Team Retrospective"
-    Then a new session should be created
-    And the Discord bot should post the session link in the text channel
-
-  Scenario: End a session
-    Given I am the facilitator of an active session
-    When I use the command "!session end"
-    Then the session status should change to "ended"
-    And all participants should see "Session Ended" on their dashboard
-    And session statistics should be saved
-
-  Scenario: Pause and resume a session
-    Given I am the facilitator of an active session
-    When I use the command "!session pause"
-    Then the session status should change to "paused"
-    And participants should see "Session Paused" indicator
-    When I use the command "!session resume"
-    Then the session status should change to "active"
-    And participants should see the normal session view
+  Scenario: End session via Discord command
+    Given an active session exists in this channel
+    And I am the facilitator
+    When I type "!rr end"
+    Then the bot should call RallyRound DELETE /api/sessions/:id
+    When RallyRound returns success
+    Then the bot should post session summary in chat
+    And the bot should leave the voice channel
 
   Scenario: Non-facilitator cannot end session
-    Given I am a participant but not the facilitator
-    When I use the command "!session end"
-    Then I should see an error "Only the facilitator can end the session"
-    And the session should remain active
+    Given an active session exists in this channel
+    And I am NOT the facilitator
+    When I type "!rr end"
+    Then the bot should reply "Only the facilitator can end the session"
+    And the bot should NOT call the RallyRound API
+
+@RallyRound
+Feature: Session Lifecycle API
+  As the RallyRound system
+  I want to manage session state
+  So that both dashboard and bot can interact with sessions
+
+  Background:
+    Given the RallyRound API is running
+    And a valid Discord token is provided
+
+  Scenario: Create session via API
+    When POST /api/sessions is called with valid session data
+    Then a new session should be created in GunDB
+    And the session should have status "active"
+    And the session should have mode "unstructured" by default
+    And the response should include the session ID and dashboard URL
+
+  Scenario: Get session state via API
+    Given a session exists with ID "session_123"
+    When GET /api/sessions/session_123 is called
+    Then the response should include full session state
+    And include participants if requested
+    And include queue if requested
+    And include agenda if requested
+
+  Scenario: Update session mode via API
+    Given I am the facilitator of session "session_123"
+    When PATCH /api/sessions/session_123 with { mode: "structured" }
+    Then the session mode should update in GunDB
+    And a webhook should be sent to the registered URL
+    And all dashboard clients should see the update in real-time
+
+  Scenario: End session via API
+    Given I am the facilitator of session "session_123"
+    When DELETE /api/sessions/session_123 is called
+    Then the session status should change to "ended"
+    And session statistics should be calculated
+    And a webhook should be sent with session_ended event
+
+@RallyRound
+Feature: Session Dashboard View
+  As a participant using the web dashboard
+  I want to view and interact with the session
+  So that I can participate fully
+
+  Background:
+    Given I am authenticated on the RallyRound dashboard
+    And I have a valid session URL
+
+  Scenario: Load session dashboard
+    When I navigate to /live/session_123
+    Then the dashboard should subscribe to GunDB for session_123
+    And I should see the current session state
+    And updates should appear in real-time
+
+  Scenario: Start session from dashboard
+    Given I am on the dashboard
+    When I click "Start Session"
+    And select my Discord server and voice channel
+    And enter a session title
+    Then a POST request should be made to /api/sessions
+    And I should be redirected to the new session dashboard
+
+  Scenario: Session not found
+    When I navigate to /live/nonexistent_session
+    Then I should see "Session not found" message
+    And be offered to create a new session
 
 # =============================================================================
 # MODE SWITCHING
@@ -666,3 +759,146 @@ Feature: Accessibility
     Given my system is in high contrast mode
     When I view the dashboard
     Then all elements should remain visible and distinct
+
+# =============================================================================
+# CROSS-SYSTEM INTEGRATION (RallyRound ↔ DiscordStats)
+# =============================================================================
+
+@Integration
+Feature: Bot to API Integration
+  As the DiscordStats bot
+  I want to communicate with RallyRound API
+  So that Discord commands affect session state
+
+  Scenario: Signal raised via Discord updates dashboard
+    Given Alice is viewing the dashboard
+    And Bob is in the Discord voice channel
+    When Bob types "!rr hand" in Discord
+    Then the bot should call POST /api/sessions/:id/signals
+    And RallyRound should update GunDB
+    And Alice should see Bob's hand raised on dashboard within 1 second
+
+  Scenario: Speaker change via Discord triggers webhook
+    Given the session has a registered webhook
+    And Bob is the current speaker
+    When the facilitator types "!rr next"
+    Then the bot should call POST /api/sessions/:id/speaker/next
+    And RallyRound should update the speaker in GunDB
+    And RallyRound should send a speaker_changed webhook
+    And the bot should receive the webhook
+    And the bot should play the transition sound
+
+  Scenario: Dashboard action triggers Discord sound
+    Given Alice is viewing the dashboard
+    And sound effects are enabled
+    When Alice clicks "Point of Order" on the dashboard
+    Then RallyRound should update GunDB
+    And RallyRound should send a signal_raised webhook to DiscordStats
+    And DiscordStats should play the gavel sound in VC
+    And DiscordStats should post a notification in the text channel
+
+  Scenario: Participant joins via VC detected by bot
+    Given an active session exists
+    When Charlie joins the Discord voice channel
+    Then DiscordStats should detect the voiceStateUpdate event
+    And DiscordStats should call POST /api/sessions/:id/participants
+    And RallyRound should add Charlie to the session
+    And all dashboard users should see Charlie in the participant list
+
+  Scenario: Participant leaves VC
+    Given Charlie is in the session
+    When Charlie leaves the Discord voice channel
+    Then DiscordStats should detect the voiceStateUpdate event
+    And DiscordStats should call DELETE /api/sessions/:id/participants/:id
+    And if Charlie was in the queue, they should be removed
+    And all dashboard users should see Charlie as "disconnected"
+
+@Integration
+Feature: Webhook Delivery and Handling
+  As the RallyRound system
+  I want to reliably deliver webhooks to DiscordStats
+  So that Discord events are triggered correctly
+
+  Scenario: Webhook signature verification
+    Given a webhook is configured with secret "shared_secret"
+    When RallyRound sends a webhook
+    Then the request should include X-RallyRound-Signature header
+    And the request should include X-RallyRound-Timestamp header
+    When DiscordStats receives the webhook
+    Then it should verify the signature matches
+    And reject the webhook if signature is invalid
+
+  Scenario: Webhook retry on failure
+    Given DiscordStats is temporarily unavailable
+    When RallyRound attempts to send a webhook
+    And the request fails
+    Then RallyRound should retry with exponential backoff
+    And log the failure for debugging
+    And continue session operation regardless
+
+  Scenario: Stale webhook prevention
+    Given a webhook was sent 10 minutes ago
+    When DiscordStats receives the webhook now
+    Then it should reject the webhook as stale
+    And log a warning about timestamp mismatch
+
+@Integration
+Feature: Consistent State Across Systems
+  As a participant
+  I want session state to be consistent
+  Whether I interact via Discord or Dashboard
+
+  Scenario: Signal state consistent across interfaces
+    Given Alice raised her hand via dashboard
+    When Bob queries "!rr queue" in Discord
+    Then Bob should see Alice in the queue
+    And the position should match what dashboard shows
+
+  Scenario: Agenda state consistent across interfaces
+    Given the facilitator added items via dashboard
+    When a participant queries "!rr agenda" in Discord
+    Then they should see the same items as dashboard
+    And the current item should match
+
+  Scenario: Mode change visible everywhere
+    Given the session is in "unstructured" mode
+    When facilitator switches to "structured" via "!rr mode structured"
+    Then dashboard should show "Structured" mode
+    And structured signals should become available on dashboard
+    And "!rr point order" should now work in Discord
+
+  Scenario: Recording indicator visible everywhere
+    When facilitator types "!rr record start"
+    Then dashboard should show recording indicator
+    And bot should announce in text channel
+    And bot should play recording announcement in VC
+
+@Integration
+Feature: VC Presence as Source of Truth
+  As the system
+  Discord VC presence should be authoritative for who is "in" the session
+
+  Scenario: Dashboard user not in VC shows limited status
+    Given Alice is authenticated on dashboard
+    But Alice is NOT in the Discord voice channel
+    When Alice views the session
+    Then Alice should see session state (read-only observer mode)
+    But Alice should NOT be able to raise signals
+    And Alice should see "Join VC to participate" message
+
+  Scenario: User in VC can participate from either interface
+    Given Bob is in the Discord voice channel
+    When Bob opens the dashboard
+    Then Bob should be able to raise signals from dashboard
+    And Bob should be able to raise signals from Discord
+    And either action should update both interfaces
+
+  Scenario: Graceful handling when bot loses VC connection
+    Given the bot is in the voice channel
+    When the bot is disconnected unexpectedly
+    Then the session should continue in RallyRound
+    But sound effects should not play
+    And the facilitator should see "Bot disconnected" warning
+    When the bot reconnects
+    Then it should rejoin the voice channel
+    And resume sound effect functionality
