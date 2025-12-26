@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const schedulingRoutes = require('./routes/scheduling');
 const notificationRoutes = require('./routes/notifications');
 const testHelperRoutes = require('./routes/test-helpers');
+const sessionRoutes = require('./routes/sessions');
 
 const app = express();
 const PORT = process.env.PORT || 8765;
@@ -47,6 +48,7 @@ app.use('/auth', authRoutes);
 app.use('/scheduling', schedulingRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/test', testHelperRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
