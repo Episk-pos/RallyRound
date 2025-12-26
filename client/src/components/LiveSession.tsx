@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSession } from '../hooks/useSession';
-import type { ParticipantSignal, Participant, SpeakerQueueEntry, AgendaItem } from '../types';
+import type { ParticipantSignal } from '../types';
 import './LiveSession.css';
 
 interface LiveSessionProps {
@@ -40,21 +40,15 @@ export function LiveSession({ sessionId, token }: LiveSessionProps) {
     error,
     currentParticipant,
     isFacilitator,
-    isSpeaker,
-    isInQueue,
     raiseSignal,
     clearSignal,
-    setAway,
     setMode,
     setRecording,
     setSpeaker,
     nextSpeaker,
-    clearSpeaker,
     clearQueue,
     endSession,
     addAgendaItem,
-    updateAgendaItem,
-    removeAgendaItem,
     advanceAgenda
   } = useSession({ sessionId, token });
 
@@ -274,7 +268,7 @@ export function LiveSession({ sessionId, token }: LiveSessionProps) {
             <h2>📝 Agenda</h2>
             {agenda && agenda.items.length > 0 ? (
               <ul className="agenda-list">
-                {agenda.items.map((item, index) => (
+                {agenda.items.map((item) => (
                   <li
                     key={item.id}
                     className={`agenda-item status-${item.status}`}

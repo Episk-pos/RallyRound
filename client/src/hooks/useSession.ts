@@ -7,25 +7,8 @@ import type {
   Agenda,
   AgendaItem,
   ParticipantSignal,
-  QueuePriority,
-  SIGNAL_PRIORITIES,
-  QUEUE_SIGNALS,
-  STRUCTURED_ONLY_SIGNALS
+  QueuePriority
 } from '../types';
-
-// Signal priority mapping
-const signalPriorities: Record<ParticipantSignal, QueuePriority> = {
-  point_of_order: 'interrupt',
-  point_of_clarification: 'high',
-  point_of_information: 'high',
-  hand: 'normal',
-  question: 'normal',
-  move_to_vote: 'normal',
-  table: 'normal',
-  agree: 'low',
-  disagree: 'low',
-  away: 'low'
-};
 
 interface UseSessionOptions {
   sessionId: string;
@@ -118,7 +101,7 @@ export function useSession({ sessionId, token }: UseSessionOptions): UseSessionR
 
     // Subscribe to session meta
     const sessionRef = gun.get('live-sessions').get(sessionId).get('meta');
-    const sessionHandler = sessionRef.on((data: Session | null) => {
+    sessionRef.on((data: Session | null) => {
       if (data && data.id) {
         setSession(data);
         setError(null);
