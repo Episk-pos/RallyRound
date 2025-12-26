@@ -434,65 +434,97 @@ Inspired by Robert's Rules of Order and committee conventions:
 
 ---
 
-## Discord Bot Commands (DiscordStats)
+## Discord Slash Commands (DiscordStats)
 
-Commands are issued in the text channel associated with the VC:
+Uses Discord's native slash command system for autocomplete, validation, and mobile support.
+
+### Command Structure
+
+All commands are subcommands of `/rr`:
+
+```
+/rr <subcommand> [options]
+```
 
 ### Session Management (Facilitator only)
-```
-!rr start [title]          - Start a new session (creates in RallyRound)
-!rr end                    - End the current session
-!rr pause                  - Pause the session
-!rr resume                 - Resume paused session
-!rr link                   - Post dashboard link
-```
+| Command | Options | Description |
+|---------|---------|-------------|
+| `/rr start` | `title` (required) | Start a new session |
+| `/rr end` | | End the current session |
+| `/rr pause` | | Pause the session |
+| `/rr resume` | | Resume paused session |
+| `/rr status` | | Show session status |
+| `/rr link` | | Post dashboard link |
 
 ### Mode Control (Facilitator only)
-```
-!rr mode unstructured      - Switch to unstructured mode
-!rr mode structured        - Switch to structured mode
-!rr record start           - Begin recording indicator
-!rr record stop            - Stop recording indicator
-```
+| Command | Options | Description |
+|---------|---------|-------------|
+| `/rr mode` | `mode`: unstructured \| structured | Switch session mode |
+| `/rr record` | `action`: start \| stop | Toggle recording indicator |
 
 ### Speaker Management (Facilitator only)
-```
-!rr next                   - Give floor to next in queue
-!rr speaker @user          - Give floor to specific user
-!rr clear                  - Clear the speaker queue
-!rr queue                  - Display current queue
-```
+| Command | Options | Description |
+|---------|---------|-------------|
+| `/rr next` | | Give floor to next in queue |
+| `/rr speaker` | `user` (required) | Give floor to specific user |
+| `/rr clear` | | Clear the speaker queue |
+| `/rr queue` | | Display current queue |
 
-### Participant Commands (Everyone)
-```
-!rr hand                   - Raise hand (toggle)
-!rr point order            - Point of order
-!rr point clarify          - Point of clarification
-!rr point info             - Point of information
-!rr question               - Signal you have a question
-!rr agree                  - Signal agreement
-!rr disagree               - Signal disagreement
-!rr away                   - Mark yourself as away
-!rr back                   - Mark yourself as returned
-```
+### Participant Commands (Everyone in VC)
+| Command | Options | Description |
+|---------|---------|-------------|
+| `/rr hand` | | Raise/lower hand (toggle) |
+| `/rr point` | `type`: order \| clarify \| info | Parliamentary point |
+| `/rr question` | | Signal you have a question |
+| `/rr agree` | | Signal agreement |
+| `/rr disagree` | | Signal disagreement |
+| `/rr away` | | Mark yourself as away |
+| `/rr back` | | Mark yourself as returned |
 
-### Agenda (Facilitator or allowed participants)
-```
-!rr agenda                 - Display agenda
-!rr agenda add [item]      - Add item to agenda
-!rr agenda next            - Move to next agenda item
-!rr agenda done            - Mark current item complete
-!rr agenda skip            - Skip current item
-```
+### Agenda Commands
+| Command | Options | Description |
+|---------|---------|-------------|
+| `/rr agenda` | | Display agenda |
+| `/rr agenda-add` | `item` (required) | Add item to agenda |
+| `/rr agenda-next` | | Move to next agenda item |
+| `/rr agenda-done` | | Mark current item complete |
+| `/rr agenda-skip` | | Skip current item |
 
 ### Sound Effects (DiscordStats handles playback)
-```
-!rr sfx [name]             - Play a sound effect (if enabled)
-!rr sfx list               - List available sounds
-!rr sfx on/off             - Enable/disable sound effects
+| Command | Options | Description |
+|---------|---------|-------------|
+| `/rr sfx` | `sound` (optional) | Play a sound effect |
+| `/rr sfx-toggle` | `enabled`: on \| off | Enable/disable sounds |
+
+### Implementation Notes
+
+Uses `@discordjs/builders` for command registration:
+
+```typescript
+import { SlashCommandBuilder } from 'discord.js';
+
+const rrCommand = new SlashCommandBuilder()
+  .setName('rr')
+  .setDescription('RallyRound live session commands')
+  .addSubcommand(sub => sub
+    .setName('start')
+    .setDescription('Start a new session')
+    .addStringOption(opt => opt
+      .setName('title')
+      .setDescription('Session title')
+      .setRequired(true)))
+  .addSubcommand(sub => sub
+    .setName('hand')
+    .setDescription('Raise or lower your hand'))
+  // ... more subcommands
 ```
 
-*Note: Commands prefixed with `!rr` to namespace for RallyRound and avoid conflicts with other bots.*
+**Benefits:**
+- Autocomplete in Discord client
+- Built-in argument validation
+- Mobile-friendly
+- Permission system integration
+- No custom parser needed
 
 ---
 
